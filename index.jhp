@@ -1,0 +1,696 @@
+<?jhp
+    const session = app.auth.login();
+    if (!session) {
+        if (page.post.user !== undefined) page.print(!!app.auth.login(page.post.user, page.post.pass));
+        else ?>
+            <form onsubmit=event.preventDefault(it())><input id=u><input type=password id=p><input type=submit></form><script>it=_=>fetch('',{method:'POST',body:JSON.stringify({user:u.value,pass:p.value})}).then(x=>x.json()).then(x=>x?location.reload():p.value='')</script>
+        <?jhp
+        return;
+    }
+
+    function getPath(path) { return '../../../www/' + path; }
+
+    const lex = {
+        cpp: {
+            reserved_words_1: ['struct', 'bool', 'int', 'char', 'auto'],
+            reserved_words_2: ['return','if','const'],
+            operators: ['*','+','-','='],
+            scoping: ['(',')','[',']','{','}'],
+            linecomment: '//',
+            blockComment: ['/*','*/'],
+            ignore: [',',';'],
+            follow: [
+                (x,i,a) => a[i+1]?.value==='('&&x.group==='identifier'?'identifier_2':void 0,
+                (x,i,a) => ['reserved_1','operators'].includes(a[i-1]?.group)&&a.slice(0,i).every(x => x.value !== '{')&&x.group==='identifier'?'identifier_1':void 0
+            ]
+        }
+    };
+    
+    const color_theme = {
+        monokai: {
+            comment: 'color: #797979',
+            scoping: 'color: #f8ff00',
+            string: 'color: #f8ff00',
+            identifier_1: 'color: #ff9b60',
+            identiifer_2: 'color: #7fff4a',
+            number: 'color: #9e86c8',
+            reserved_1: 'color: #16bfff',
+            reserved_2: 'color: #e80a62',
+            operator: 'color: #e80a62'
+        }
+    };
+    
+    function colorise(src, lex) {
+        // reserved_1 reserved_2 comment
+        // operator scoping
+        // string number
+        // identifier_1 identifier_2
+        // identifier ignore
+        let index = 0; const tokens = [];
+        const currentChar = () => src[index] || '';
+        const skipWhitespace = () => { while (currentChar().match(/\s/)) ++index; };
+        const matchWord = (word) => src.substring(index).indexOf(word) === 0 && src[index + word.length].match(/[\W]/);
+        const matchSymbol = (symbol) => src.substring(index).indexOf(symbol) === 0;
+        const retWord = (word, group) => tokens.push({ group, value: word, index: (index += word.length) - word.length });
+        const retSymbol = (symbol, group) => tokens.push({ group, value: symbol, index: (index += symbol.length) - symbol.length });
+        const getChars = (regex) => { let out = ''; while (currentChar().match(regex)) { out += currentChar(); ++index; } return out };
+        
+        inf: while (true) {
+            skipWhitespace(); if (index >= src.length) break;
+            for (let i of lex.reserved_words_1) if (matchWord(i)) { retWord(i,'reserved_1'); continue inf }
+            for (let i of lex.reserved_words_2) if (matchWord(i)) { retWord(i,'reserved_2'); continue inf }
+            
+            if (currentChar().match(/[0-9]/)) { tokens.push({group: 'number', index, value: getChars(/[0-9]/) }); continue }
+            if (currentChar().match(/[$_a-zA-Z]/)) { tokens.push({ group: 'identifier', index, value: getChars(/[$_0-9A-Za-z]/) }); continue }
+            if (currentChar() === '"') { const out = { group: 'string', index: index++, value: `"${getChars(/[^"]/)}"` }; index++; tokens.push(out); continue }
+            if (currentChar() === '/' && src[index + 1] === '/') { tokens.push({ group: 'comment', index, value: getChars(/[^\n]/) }); continue }
+            
+            for (let i of lex.operators) if (matchSymbol(i)) { retSymbol(i,'operator'); continue inf }
+            for (let i of lex.scoping) if (matchSymbol(i)) { retSymbol(i,'scoping'); continue inf }
+            for (let i of lex.ignore) if (matchSymbol(i)) { retSymbol(i,'ignore'); continue inf }
+            throw `Unhandled token: ${JSON.stringify(src.slice(index))}`;
+        }
+        return tokens
+            .map((x,i,a) => (x.group = lex.follow.reduce((acc, f) => acc || f(x,i,a), void 0) ?? x.group, x)) // TODO: Follow
+            .map((x,i,a) => src.slice((a[i-1]?.index ?? 0) + (a[i-1]?.value.length ?? 0), x.index) +`${x.group==='ignore'?'':`<span class="mk ${x.group}">`}${src.slice(x.index,x.index+x.value.length)}${x.group==='ignore'?'':'</span>'}`).join('');
+    }
+    
+    const MIME_TYPES = { "aac": "audio/aac","abw": "application/x-abiword","arc": "application/x-freearc","avif": "image/avif","avi": "video/x-msvideo","azw": "application/vnd.amazon.ebook","bin": "application/octet-stream","bmp": "image/bmp","bz": "application/x-bzip","bz2": "application/x-bzip2","cda": "application/x-cdf","csh": "application/x-csh","css": "text/css","csv": "text/csv","doc": "application/msword","docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document","eot": "application/vnd.ms-fontobject","epub": "application/epub+zip","gz": "application/gzip","gif": "image/gif","htm": "text/html","html": "text/html","ico": "image/vnd.microsoft.icon","ics": "text/calendar","jar": "application/java-archive","jpeg .jpg": "image/jpeg","js": "text/javascript (Specifications: HTML and RFC 9239)","json": "application/json","jsonld": "application/ld+json","mid": "audio/midi audio/x-midi","midi": "audio/midi audio/x-midi","mjs": "text/javascript","mp3": "audio/mpeg","mp4": "video/mp4","mpeg": "video/mpeg","mpkg": "application/vnd.apple.installer+xml","odp": "application/vnd.oasis.opendocument.presentation","ods": "application/vnd.oasis.opendocument.spreadsheet","odt": "application/vnd.oasis.opendocument.text","oga": "audio/ogg","ogv": "video/ogg","ogx": "application/ogg","opus": "audio/opus","otf": "font/otf","png": "image/png","pdf": "application/pdf","php": "application/x-httpd-php","ppt": "application/vnd.ms-powerpoint","pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation","rar": "application/vnd.rar","rtf": "application/rtf","sh": "application/x-sh","svg": "image/svg+xml","tar": "application/x-tar","tif": "image/tiff","tiff": "image/tiff","ts": "video/mp2t","ttf": "font/ttf","txt": "text/plain","vsd": "application/vnd.visio","wav": "audio/wav","weba": "audio/webm","webm": "video/webm","webp": "image/webp","woff": "font/woff","woff2": "font/woff2","xhtml": "application/xhtml+xml","xls": "application/vnd.ms-excel","xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","xml": "application/xml","xul": "application/vnd.mozilla.xul+xml","zip": "application/zip","3gp": "video/3gpp","3g2": "video/3gpp2","7z": "application/x-7z-compressed" };
+
+    if (page.get.method) {
+        switch (page.get.method) {
+            case '/echo': return page.print(JSON.stringify(page.post));
+            case '/config':
+                if (!app.fs.existsSync('config/display')) {
+                    app.fs.mkdirSync('config');
+                    app.fs.writeFileSync('config/display', JSON.stringify({}));
+                }
+                page.print(app.fs.readFileSync('config/display'));
+                break;
+            case '/ls': {
+                const path = getPath(page.post.path);
+                const typeMasks = [
+                    [0140000, 'socket'],
+                    [0120000, 'symbolic link'], 
+                    [0100000, 'file'],
+                    [0060000, 'block device'],
+                    [0040000, 'directory'],
+                    [0020000, 'character device'],
+                    [0010000, 'FIFO'],
+                ];
+                const getType = (mode) => typeMasks.find(y=>(mode&y[0])===y[0])[1];
+                const getMimeType = (name) => MIME_TYPES[name.match(/(?<=\.)[^.]*$/)] ?? null;
+                const out = app.fs.readdirSync(path)
+                    .map(x => ({ name: x, ...app.fs.statSync(path + '/' + x), path: path + '/' + x, mime: getMimeType(x) }))
+                    .map(x => ({ ...x, type: getType(x.mode) }));
+                page.print(JSON.stringify(out));
+                break;
+            }
+            case '/cat':
+                page.print(JSON.stringify(app.fs.readFileSync(getPath(page.post.path), { encoding: page.post.encoding })));
+                break;
+            case '/save':
+                app.fs.writeFileSync(getPath(page.post.path), page.post.content);
+                page.print(true);
+                break;
+            case '/new/file':
+                if (!app.fs.existsSync(getPath(page.post.path))) app.fs.writeFileSync(getPath(page.post.path), '');
+                page.print(true);
+                break;
+            case '/new/folder':
+                app.fs.mkdirSync(getPath(page.post.path));
+                page.print(true);
+                break;
+            case '/delete/file': {
+                const name = page.post.path.split('/').pop().replaceAll('_', '__');
+                const date = Date.now();
+                const _name = name + '_' + date;
+                app.fs.cpSync(getPath(page.post.path), getPath('.recycle/' + _name));
+                app.fs.writeFileSync(getPath('.recycle/.metadata/' + _name + '.metadata'), JSON.stringify({ ...page.post, name, date }));
+                app.fs.rmSync(getPath(page.post.path), true);
+                page.print(true);
+                break;
+            }
+            case '/clearRecycleBin': {
+                const files = app.fs.readdirSync(getPath('.recycle'));
+                files.forEach(file => {
+                    try {
+                        app.fs.rmSync(getPath('.recycle/' + file));
+                        app.fs.rmSync(getPath('.recycle/.metadata/' + file + '.metadata'));
+                    }
+                    catch (e) {}
+                });
+                page.print(true);
+                break;
+            }
+            case '/delete/folder':
+                app.fs.rmSync(getPath(page.post.path), true);
+                page.print(true);
+                break;
+            case '/term': {
+                const { spawn } = await import('child_process');
+                if (!app.data.term) {
+                    app.data.term ??= { handle: await spawn('bash', ['-i'], { cwd: '/www' }), data: [], prompt: '' };
+                    app.data.term.handle.stdout.on('data', data => app.data.term.data.push({ type: 'out', time: new Date(), data: data.toString().trim() }));
+                    //app.data.term.handle.stdin.on('data', data => app.data.term.data.push({ type: 'in', time: new Date(), data: data.toString().trim() }));
+                    app.data.term.handle.stderr.on('data', data => {
+                        data = data.toString().trim();
+                        if (data.startsWith('www-data')) app.data.term.prompt = data;
+                        else if (data !== app.data.term.data.slice(-1)[0]?.in) app.data.term.data.push({ type: 'err', time: new Date(), data });
+                    });
+                    app.data.term.handle.on('close', code => console.log(`Terminal closed with error code ${code}`));
+                    await new Promise(res => setTimeout(res, 50));
+                    app.data.term.data.length = 0;
+                    app.data.term.handle.stdin.write('\n');
+                }
+                const term = app.data.term;
+                
+                if (page.post.cmd !== undefined) {
+                    term.data.push({ type: 'in', time: new Date(), data: term.prompt + page.post.cmd, in: page.post.cmd });
+                    term.handle.stdin.write(page.post.cmd+'\n');
+                    await new Promise(res => setTimeout(res, 50));
+                }
+                page.print(JSON.stringify({ lines: term.data, prompt: term.prompt }));
+                break;
+            }
+            case '/term/clear':
+                app.data.term.data.length = 0;
+                page.print(true);
+                break;
+            case '/term/exit':
+                app.data.term.handle.kill();
+                delete app.data.term;
+                page.print(true);
+                break;
+            case '/deployPortfolio': {
+                const pprefix = 'portfolio/pages/';
+                const pages = Object.assign({}, ...app.fs.readdirSync(getPath(pprefix)).map(x => ({[x]:app.fs.readFileSync(getPath(pprefix+x))})));
+                Object.keys(pages).forEach(key => {
+                    app.fs.writeFileSync(getPath('portfolio/build/'+key), pages[key].replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) =>
+                        ({
+                            'highlight': (lang, content) => `<pre>${colorise(content, lex[lang])}</pre>`,
+                            'theme': (theme) => Object.keys(color_theme[theme]).map(key => `.mk.${key}{${color_theme[theme][key]}}`).join('')
+                        })[func](...args.split(',').map(x=>x.trim()), content)));
+                    page.print(true);
+                    app.fs.writeFileSync(getPath('ab24.xyz/new/'+key.replace('.html','.jhp')), `<\?jhp=='protectfile.jhp'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
+                });
+                break;
+            }
+            
+            case '/template/index': ?>
+                <style>
+                    :host { display: flex; height: 100vh; flex-direction: column; }
+                    :host { --foldertree-width: 0/*0.25fr*/ }
+                    #topbar { background: gainsboro; padding: 2px }
+                    #main { background: green; display: grid; grid-template-columns: var(--foldertree-width) 1fr; overflow: auto; flex-grow: 1 }
+                    #bottombar { background: gainsboro; height: 1em }
+                    
+                    #foldertree { background: aqua }
+                    #panels { background: white; display: flex; overflow: auto }
+                    #panels > * { flex: 1 1 0; overflow: auto }
+                    
+                    #topbar { background: #363636; color: white; padding: 0px 10px; display: flex; list-style-type: none; margin: 0 }
+                    #topbar li span:after { content: ' \25B6'; color: white }
+                    #topbar>li>span:after { content: '' }
+                    #topbar li { cursor: pointer; padding: 0.5rem; position: relative; white-space: nowrap; background: #363636 }
+                    #topbar ul { display: none; left: 0; position: absolute; top: 100%; list-style-type: none; margin: 0; padding: 0 }
+                    #topbar ul ul { left: 100%; position: absolute; top: 0 }
+                    #topbar li:hover { background-color: #000 }
+                    #topbar li:hover>ul { display: block; z-index: 999 }
+                </style>
+                <ul id=topbar>
+                    <li><span j-click="$.open('terminal')">Terminal</span></li>
+                    <li><span j-click="$.open('filelist', { path: '' })">File explorer</span></li>
+                    <li><span j-click="$.open('url', 'https://node.ab24.xyz/serman')">Serman</span></li>
+                    <li><span>Tools</span><ul><li j-click="$.restartSerman()">Restart SerMan</li><li j-click="$.deployPortfolio()">Deploy portfolio</li></ul></li>
+                </ul>
+                <div id=main>
+                    <div id=foldertree>
+                    </div>
+                    <div id=panels>
+                    </div>
+                </div>
+                <div id=bottombar>
+            <?jhp break;
+            case '/template/panel': ?>
+                <style>
+                    :host{position:relative;padding:5px}
+                    #options{position:absolute; top: 0;right:0;z-index:9998;text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;color:white}
+                    #menu,#menu+div{display:none}
+                    #menu:checked+div{display:block;position:absolute;z-index:9999;background:white;right:0;top:1em;display:flex;flex-direction:column}
+                </style>
+                <input type=checkbox id=menu>
+                <div>
+                    <button j-click=$.close()>Close</button>
+                    <button j-repeat="option in $.options" j-click=option.func()>{{ option.text }}</button>
+                </div>
+                <label id=options class="fa fa-cog" for=menu></label>
+            <?jhp break;
+            case '/template/filelist-panel': ?>
+                <style>
+                    :host { --modal-x: 0; --modal-y: 0; font-size: 1.5em; }
+                    .entry {
+                        display: grid;
+                        grid-template-columns: 3fr 1fr 1fr;
+                        border-top: 1px solid black;
+                        margin: 5px;
+                        padding: 5px;
+                    }
+                    .text-outline { text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black }
+                    .directory { cursor: pointer; }
+                    .directory:hover { color: grey; }
+                    .file > span:first-child { color: deeppink; }
+                    #headers { font-weight: bold; font-size: 1.1em; }
+                    #modal {
+                        display: none;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        height: 100vh;
+                        width: 100vw;
+                        z-index: 9999;
+                    }
+                    #modalcontent {
+                        background: white;
+                        width: fit-content;
+                        list-style: none;
+                        position: fixed;
+                        top: var(--modal-y);
+                        left: var(--modal-x);
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                        border: 1px solid black;
+                        user-select: none;
+                        transition: max-height 0.5s;
+                        overflow: hidden;
+                    }
+                    #modalcontent li { padding: 5px 10px; }
+                    #modalcontent li:hover { background: gainsboro; }
+                    
+                    .black { color: black; }
+                    .red { color: red; }
+                    .orange { color: orange; }
+                    .gainsboro { color: gainsboro; }
+                </style>
+                <div id=headers class="entry">
+                    <span>Name</span>
+                    <span>Last modified</span>
+                    <span>File size</span>
+                </div>
+                <div j-repeat="x in $.files" class="entry {{x.type==='directory'?'directory':'file'}}" j-click="$.handle(x)" j-rclick="$.context(event, x); return true">
+                    <span><i class="fa {{$.icon(x)}}"></i> {{x.name}}</span>
+                    <span>{{x.mtime?new Date(x.mtime).toLocaleDateString():'-'}}</span>
+                    <span>{{x.type==='directory' ? '-' : $.size(x.size)}}</span>
+                </div>
+                <div id=modal onclick=this.style.display='none' oncontextmenu=this.style.display='none' j-rclick="return 'dispatch'">
+                    <ul id=modalcontent j-click="return true">
+                        <li j-click="$.upload()">File upload</li>
+                        <li j-click="$.newFile()">New File</li>
+                        <li j-click="$.newFolder()">New Folder</li>
+                        <li j-click="$.delete()">Delete file</li>
+                    </ul>
+                </div>
+            <?jhp break;
+            case '/template/texteditor-panel': ?>
+                <style>
+                    #editor{width:100%;height:100%}
+                    #alert{position:absolute; bottom: 0; left: 50%; transform: translate(-50%); background: darkgrey; color: white;display:none;padding: 20px;border-radius: 3px}
+                    #info{position:absolute; bottom: 7px; right: 7px;text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;color:white}
+                </style>
+                <div id=editor></div>
+                <div id=alert></div>
+                <div id=info>{{$.file.name}}</div>
+            <?jhp break;
+            case '/template/image-panel': ?>
+                <style>img{object-fit:contain}</style><img src={{$.url}}>
+            <?jhp break;
+            case '/template/terminal-panel': ?>
+                <style>
+                    :host {
+                        background: black;
+                        color: white;
+                        width:100%;height:100%;
+                        display: block;
+                    }
+                    #cont {
+                        display: flex;
+                        flex-direction: column-reverse;
+                        overflow: auto;
+                        max-height: 100%;
+                    }
+                    #input::before { content: attr(title); }
+                    pre {
+                        margin: 0;
+                        word-break: break-all;
+                    }
+                </style>
+                <div id=cont>
+<pre id=input></pre><div id=suggest></div>
+<pre id=buffer><div j-repeat="line in $.lines">{{ line.data }}</div>
+</pre>
+                </div>
+            <?jhp break;
+        }
+        return;
+    }
+?>
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Opal</title>
+        <script src=//dev.ab24.xyz/j/jang.js></script>
+        <script src=//cdn.ab24.xyz/ace/ace.js></script>
+        <script src=//cdn.ab24.xyz/ace/ext-modelist.js></script>
+        <link rel="stylesheet" href="//cdn.ab24.xyz/font_awesome/css/all.min.css">
+        <style>html,body{margin:0;padding:0}jang-route{display:block;width:100vw;height:100vh}</style>
+    </head>
+    <body>
+        <jang-index></jang-index>
+        <script>
+            // Util
+            const post=(path,data={})=>fetch(`?method=${path}`, { method: 'POST', body: JSON.stringify(data) }).then(r=>r.json());
+            const elementBuilder=(type,s=false)=>{const e=document.createElement(type),t=()=>{},h={get:(t, p)=>p==='build'?()=>e:new Proxy((t.p.push(p),t),h),apply:(t,_,a)=>{`${t.p}`==='style'?s=!s:s?elem.style[target
+            .path[0]]=args[0]:(()=>{let o=e;while(t.p.length>1)o=o?.[t.p.shift()];o[t.p[0]]instanceof Function?o[t.p[0]](...a):o[t.p[0]]=a[0]})();return new Proxy((t.p=[],t),h)}};return new Proxy((t.p=[],t),h)};
+            
+            // Jang
+            jang
+                .component(class Index extends jang.classes.JangComponent {
+                    constructor(...a) { super(...a, { template: '?method=/template/index' }); }
+                    init() {
+                        jang.rootscope.panels = this.$('#panels');
+                        this.scope.open = (name, args) => this.$('#panels').append(elementBuilder('jang-panel').component.type(name, args).build());
+                        setTimeout(() => this.scope.open('filelist', { path: location.hash.substr(1) }));
+                        this.scope.restartSerman = () => {
+                            const _ = confirm("Restart serman?");
+                            if (_) post('https://console.ab24.xyz/tools/runServer.jhp', { name: 'serman' });
+                        };
+                        this.scope.deployPortfolio = () => {
+                            post('/deployPortfolio');
+                        };
+                    }
+                })
+                .component(class Panel extends jang.classes.JangComponent {
+                    #type;
+                    constructor(...a) {
+                        super(...a, { template: '?method=/template/panel', style: 'inherit' });
+                        this.scope.close = () => this.close();
+                    }
+                    
+                    close() { this.element.remove(); jang.rootscope.resizeEditors(); }
+                    
+                    type(type, args) {
+                        if (this.#type === type) return;
+                        this.#type = type;
+                        const create = (name) => {
+                            const options = this.$('#options');
+                            const elem = elementBuilder(name).build();
+                            while(options.nextSibling) options.nextSibling.remove();
+                            options.after(elem);
+                            this.scope.options = (elem.component.options ?? []).map(x => ({ ...x, func: () => x.func(this.$('#menu').checked=false) }));
+                            return elem.component;
+                        };
+                        switch (type) {
+                            case 'filelist': create('jang-filelistpanel').path = args.path; break;
+                            case 'texteditor': create('jang-texteditorpanel').file(args); break;
+                            case 'image': create('jang-imagepanel').file(args); break;
+                            case 'iframe': create('jang-iframepanel').file(args); break;
+                            case 'url': create('jang-iframepanel').url(args); break;
+                            case 'terminal': create('jang-terminalpanel'); break;
+                            default: throw `Invalid panel type "${type}"`;
+                        }
+                        this.$apply();
+                    }
+                })
+                .component(class FileListPanel extends jang.classes.JangComponent {
+                    #path; #history = [];
+                    constructor(...a) {
+                        super(...a, { template: '?method=/template/filelist-panel', style: 'inherit' });
+                        //this.path = '';
+                        this.options = [
+                            { text: 'Clear recycle bin', func: () => this.clearRecycleBin() }    
+                        ];
+                        this.scope.handle = (file) => {
+                            file.name;
+                            if (file.type === 'directory') this.path += '/' + file.name;
+                            else if (file.type === 'file') {
+                                const elem = document.createElement('jang-panel');
+                                jang.rootscope.panels.append(elem);
+                                let paneltype = 'texteditor';
+                                if (file.mime?.startsWith('image/')) paneltype = 'image';
+                                else if (file.mime === 'application/pdf' | file.mime?.startsWith('audio/')) paneltype = 'iframe';
+                                elem.component.type(paneltype, file);
+                            }
+                        }
+                        this.scope.context = (event, file) => {
+                            this.scope.context.file = file;
+                            this.$('#modalcontent').style.setProperty('--modal-x', `${event.x}px`);
+                            this.$('#modalcontent').style.setProperty('--modal-y', `${event.y}px`);
+                            this.$('#modal').style.display = 'block';
+                            this.$('#modalcontent').style.maxHeight = 0;
+                            requestAnimationFrame(() => this.$('#modalcontent').style.maxHeight = '50%');
+                        }
+                        this.scope.icon = this.icon;
+                        this.scope.size = (bytes) => {
+                            const suff = ['bytes', 'KB','MB','GB','TB'];
+                            let index = 0;
+                            while (bytes > 1024) {
+                                bytes /= 1024;
+                                ++index;
+                            }
+                            return `${parseFloat(bytes.toFixed(2))} ${suff[index]}`;
+                        };
+                        
+                        this.scope.upload = this.upload.bind(this);
+                        this.scope.newFile = this.newFile.bind(this);
+                        this.scope.newFolder = this.newFolder.bind(this);
+                        this.scope.delete = () => {
+                            post('/delete/file', this.scope.context.file);
+                            this.$('#modal').click();
+                            this.reload();
+                        };
+                    }
+                    
+                    set path(path) {
+                        path = new URL(path.replace('//', '/'), 'file://').pathname;
+                        this.#history.push(this.#path = path);
+                        location.hash = path;
+                        document.title = `Opal: ${path}`;
+                        (async () => {
+                            this.scope.files = await post('/ls', { path });
+                            this.scope.files.unshift(...['..'].map(name => ({ name, type: 'directory' })));
+                            this.scope.files.sort((a, b) => a.type.localeCompare(b.type));
+                            this.$apply();
+                        })();
+                    }
+                    
+                    get path() { return this.#path; }
+                    
+                    icon(file) {
+                        if (file.type === 'directory') return 'fa-folder text-outline';
+                        switch (file.mime) {
+                            case 'application/pdf': return 'fa-file-pdf red';
+                            
+                            case 'image/vnd.microsoft.icon':
+                            case 'image/svg+xml':
+                            case 'image/png': return 'fa-file-image black';
+                            
+                            case 'text/javascript (Specifications: HTML and RFC 9239)':
+                            case 'application/x-httpd-php':
+                            case 'text/html':
+                            case 'application/json':
+                            case 'application/x-sh':
+                            case 'text/css': return 'fa-file-code gainsboro text-outline';
+                            
+                            case 'application/vnd.openxmlformats-officedocument.presentationml.presentation': return 'fa-file-powerpoint orange';
+                            
+                            case 'application/x-7z-compressed': return 'fa-file-archive black';
+                            
+                            case 'audio/wav': return 'fa-file-audio black';
+                            
+                            case 'text/plain': return 'fa-file-edit black';
+                            default:
+                                if (file.name.endsWith('.jhp')) return 'fa-file-code black';
+                                return 'fa-file black';
+                        }
+                    }
+                    
+                    reload() { this.path = this.#history.pop(); }
+                    
+                    upload() {
+                            this.$('#modal').click();
+                            this.reload();
+                    }
+                    newFile() {
+                        const name = prompt('File name');
+                        if (!name) return;
+                        post('/new/file', { path: this.#path + '/' + name });
+                        this.$('#modal').click();
+                        this.reload();
+                    }
+                    newFolder() {
+                        const name = prompt('Folder name');
+                        if (!name) return;
+                        post('/new/folder', { path: this.#path + '/' + name });
+                        this.$('#modal').click();
+                        this.reload();
+                    }
+                    
+                    clearRecycleBin() {
+                        const _ = confirm('Clear recycle bin?');
+                        if (!_) return;
+                        post('/clearRecycleBin');
+                    }
+                })
+                .component(class TextEditorPanel extends jang.classes.JangComponent {
+                    #file;
+                    constructor(...a) {
+                        super(...a, { template: '?method=/template/texteditor-panel' });
+                        this.options = [
+                            { text: 'Save', func: () => this.save() },
+                            { text: 'Set title', func: () => document.title = `Opal: ${this.#file.path.split('/').pop()}` }
+                        ];
+                    }
+                    
+                    save() {
+                        post('/save', { path: this.#file.path, content: this.editor.getValue() }).then(x => {
+                            this.$('#alert').innerText = 'Saved';
+                            this.$('#alert').style.display = 'block';
+                            setTimeout(()=>this.$('#alert').style.display = 'none', 1500);
+                        });
+                    }
+                    
+                    init() {
+                        this.editor = ace.edit(this.$('#editor'));
+                        this.editor.setTheme('ace/theme/monokai');
+                        this.editor.renderer.attachToShadowRoot();
+                        this.editor.commands.addCommand({
+                            name: 'save',
+                            bindKey: { win: 'Ctrl+S', mac: 'Command+S' },
+                            exec: () => this.save()
+                        });
+                        jang.rootscope.editors.push(this.editor);
+                    }
+                    
+                    async file(file) {
+                        await this.initialised;
+                        const modelist = ace.require("ace/ext/modelist");
+                        this.#file = this.scope.file = file;
+                        this.$apply();
+                        this.editor.setValue(await post('/cat', { path: file.path }));
+                        this.editor.session.setMode(modelist.getModeForPath(file.path).mode);
+                        this.editor.session.setUseWrapMode(true);
+                        this.editor.clearSelection();
+                        this.options[1].func();
+                    }
+                })
+                .component(class ImagePanel extends jang.classes.JangComponent {
+                    constructor(...a) { super(...a, { template: '?method=/template/image-panel' }) }
+                    
+                    file(file) {
+                        post('/cat', { path: file.path, encoding: 'base64' }).then(x => {
+                            this.scope.url = `data:${file.mime};base64,${x}`;
+                            this.$apply();
+                        });
+                    }
+                })
+                .component(class IFramePanel extends jang.classes.JangComponent {
+                    constructor(...a) { super(...a, { html: '<style>:host{width:100%;height:100%;display:flex}iframe{border:0;flex-grow:1}</style><iframe src={{$.url}}></iframe>' }); }
+                    file(file) {
+                        switch (file.mime) {
+                            case 'application/pdf': this.scope.url = 'data:application/pdf;base64,JVBERi0xLjAKMSAwIG9iajw8L1BhZ2VzIDIgMCBSPj5lbmRvYmogMiAwIG9iajw8L0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iaiAzIDAgb2JqPDwvTWVkaWFCb3hbMCAwIDMgM10+PmVuZG9iagp0cmFpbGVyPDwvUm9vdCAxIDAgUj4+';
+                            default: this.scope.url = 'about:blank';
+                        }
+                        post('/cat', { path: file.path, encoding: 'base64' }).then(x => {
+                            this.scope.url = `data:${file.mime};base64,${x}`;
+                            this.$apply();
+                        });
+                        this.$apply();
+                    }
+                    url(url) {
+                        this.scope.url = url;
+                        this.$apply();
+                    }
+                })
+                .component(class TerminalPanel extends jang.classes.JangComponent {
+                    constructor(...a) { super(...a, { template: '?method=/template/terminal-panel' }); this.scope.lines = []; }
+                    
+                    async init() {
+                        this.input = this.$('#input');
+                        this.scope.prompt = this.prompt;
+                        this.str = '';
+                        
+                        this.element.addEventListener('keydown', e => {
+                            e.preventDefault();
+                            switch (e.key) {
+                                case 'Enter': return this.submit();
+                                case 'Backspace': this.str = this.str.slice(0, -1); break;
+                                case 'Shift': return;
+                                case 'Control': return;
+                                case 'Meta': return;
+                                case 'Tab': {
+                                    return;
+                                    const line = this.input.textContent.split(/\s+/);
+                                    const suggest = line.length > 1 ? this.suggest(line.pop(), this.files.map(x => x.name)) : '';
+                                    return this.input.textContent = line.join(' ') + ' ' + suggest;
+                                }
+                                case 'ArrowLeft': case 'ArrowUp': case 'ArrowRight': case 'ArrowDown': return;
+                                case 'Alt': return;
+                                case 'Escape': return;
+                                default: this.str += e.key;
+                            }
+                            this.input.innerText = this.str;
+                        });
+                        this.element.setAttribute('tabindex', 0);
+                        this.element.focus();
+                        
+                        const fn = async () => {
+                            if (this.stop) return;
+                            const { lines, prompt } = await post('/term');
+                            this.scope.lines = lines;
+                            this.scope.prompt = this.input.title = prompt;
+                            this.$apply();
+                            if (this.stop) return;
+                            setTimeout(fn, 500);
+                        };
+                        fn();
+                    }
+                    
+                    suggest(inp, match = []) {
+                        match = match.filter(x => x.startsWith(inp));
+                        if (match.length === 1) return inp;
+                        this.$('#suggest').textContent = match.join('\n');
+                        return inp;
+                    }
+                    
+                    async submit() {
+                        const [cmd, ...params] = this.str.split(/\s+/);
+                        switch (cmd) {
+                            case 'clear': {
+                                await post('/term/clear');
+                                this.str = this.input.innerText = '';
+                                return;
+                            }
+                            case 'exit': {
+                                this.stop = true;
+                                await new Promise(res => setTimeout(res, 200));
+                                post('/term/exit');
+                                this.element.remove();
+                                return;
+                            }
+                        }
+                        const { lines, prompt } = await post('/term', { cmd: this.str });
+                        this.scope.lines = lines;
+                        this.scope.prompt = this.input.title = prompt;
+                        this.input.innerText = this.$('#suggest').innerText = this.str = '';
+                        this.$apply();
+                    }
+                })
+                .rootscope(class {
+                    constructor({route}) { this.editors = [] }
+                    resizeEditors() { this.editors.forEach(x => x.resize()) }
+                })
+                .init();
+        </script>
+    </body>
+</html>
