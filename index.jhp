@@ -193,19 +193,21 @@
                 break;
             case '/deployPortfolio': {
                 const pprefix = 'portfolio/pages/';
-                const pages = Object.assign({}, ...app.fs.readdirSync(getPath(pprefix)).map(x => ({[x]:app.fs.readFileSync(getPath(pprefix+x))})));
+                const pages = Object.assign({}, ...(await app.fs.readdirSync(getPath(pprefix), {recursive:true})).map(x => x instanceof Array ? x[1].map(y => x[0]+'/'+y) : [x]).flat().map(x => ({[x]:app.fs.readFileSync(getPath(pprefix+x))})));
                 Object.keys(pages).forEach(key => {
-                    const replace = str => str.replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) => {
+                    const replace = (str = '', params = []) => str.replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) => {
                         const funcs = {
                             'highlight': (content, lang, short = true) => `<pre>${colorise(content, lex[lang], { short })}</pre>`,
                             'theme': (content, theme, short = true) => Object.keys(color_theme[theme]).map(key => `.mk.${short ? color_theme_short_name_map[key] : key}{${color_theme[theme][key]}}`).join(''),
-                            'snippet': (content, path) => replace(app.fs.readFileSync(getPath('portfolio/snippets/'+path))),
-                            'sitemap': () => `<div id=sitemap>${Object.keys(pages).map(page => `<a href=${page.replace('.html','.jhp')}>${page.substr(0, page.indexOf('.'))}</a>`).join('')}</div>`
+                            'snippet': (content, path, ...params) => replace(app.fs.readFileSync(getPath('portfolio/snippets/'+path)), [content].concat(params)),
+                            'sitemap': () => `<div id=sitemap>${Object.keys(pages).filter(x => !x.startsWith('blog/')).map(page => `<a target=_self href=/${page.replace('.html','.jhp')}>${page.substr(0, page.indexOf('.'))}</a>`).join('')}</div>`,
+                            'posts': () => `<div id=posts>${Object.keys(pages).filter(x => x.startsWith('blog/')).map(x => (([,_,content,[,title,date]=_.split(',').map(x=>JSON.parse(x))]) => `<i>${date}</i> - <a target=_self href=/${x.replace('.html','.jhp')}>${title}</a>: ${content.substr(0, 40)+(content.length<=40?'':'...')}`)(pages[x].match(/<##snippet\((.*?)\)##>(.*?)<\/##>/s))).join('')}`
                         };
-                        return funcs[func](content, ...args.split(',').filter(x=>x).map(x => JSON.parse(x.trim())));
+                        if (!isNaN(func)) return replace(params[func]);
+                        return funcs[func](content, ...args.split(',').filter(x=>x).map(x => JSON.parse(x)));
                     });
                     app.fs.writeFileSync(getPath('portfolio/build/'+key), replace(pages[key]));
-                    app.fs.writeFileSync(getPath('ab24.xyz/'+key.replace('.html','.jhp')), `<\?jhp=='protectfile.jhp'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
+                    app.fs.writeFileSync(getPath('ab24.xyz/'+key.replace('.html','.jhp')), `<\?jhp=='${getPath('ab24.xyz/protectfile.jhp')}'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
                 });
                 page.print(true);
                 break;
@@ -263,42 +265,14 @@
             case '/template/filelist-panel': ?>
                 <style>
                     :host { --modal-x: 0; --modal-y: 0; font-size: 1.5em; }
-                    .entry {
-                        display: grid;
-                        grid-template-columns: 3fr 1fr 1fr;
-                        border-top: 1px solid black;
-                        margin: 5px;
-                        padding: 5px;
-                    }
+                    .entry {display: grid;grid-template-columns: 3fr 1fr 1fr;border-top: 1px solid black;margin: 5px;padding: 5px}
                     .text-outline { text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black }
                     .directory { cursor: pointer; }
                     .directory:hover { color: grey; }
                     .file > span:first-child { color: deeppink; }
                     #headers { font-weight: bold; font-size: 1.1em; }
-                    #modal {
-                        display: none;
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        height: 100vh;
-                        width: 100vw;
-                        z-index: 9999;
-                    }
-                    #modalcontent {
-                        background: white;
-                        width: fit-content;
-                        list-style: none;
-                        position: fixed;
-                        top: var(--modal-y);
-                        left: var(--modal-x);
-                        margin: 0;
-                        padding: 0;
-                        box-sizing: border-box;
-                        border: 1px solid black;
-                        user-select: none;
-                        transition: max-height 0.5s;
-                        overflow: hidden;
-                    }
+                    #modal {display: none;position: fixed;top: 0;left: 0;height: 100vh;width: 100vw;z-index: 9999}
+                    #modalcontent {background: white;width: fit-content;list-style: none;position: fixed;top: var(--modal-y);left: var(--modal-x);margin: 0;padding: 0;box-sizing: border-box;border: 1px solid black;user-select: none;transition: max-height 0.5s;overflow: hidden}
                     #modalcontent li { padding: 5px 10px; }
                     #modalcontent li:hover { background: gainsboro; }
                     .black { color: black; } .red { color: red; } .orange { color: orange; } .gainsboro { color: gainsboro; }
