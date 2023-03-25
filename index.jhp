@@ -12,9 +12,10 @@
 
     const lex = {
         cpp: {
-            reserved_words_1: ['struct', 'bool', 'int', 'char', 'auto'],
+            reserved_words_1: ['struct', 'bool', 'int', 'char', 'auto', 'double'],
             reserved_words_2: ['return','if','const'],
-            operators: ['*','+','-','='],
+            constant: [],
+            operators: ['>', '<', '*','+','-','=','#','!','^','/', '?', ':', '&', '|'],
             scoping: ['(',')','[',']','{','}'],
             linecomment: '//',
             blockComment: ['/*','*/'],
@@ -22,6 +23,19 @@
             follow: [
                 (x,i,a) => a[i+1]?.value==='('&&x.group==='identifier'?'identifier_2':void 0,
                 (x,i,a) => ['reserved_1','operators'].includes(a[i-1]?.group)&&a.slice(0,i).every(x => x.value !== '{')&&x.group==='identifier'?'identifier_1':void 0
+            ]
+        },
+        js: {
+            reserved_words_1: ['const','let','function'],
+            reserved_words_2: ['throw','for','if','do','while','break','continue'],
+            constant: ['true','false'],
+            operators: ['>', '<', '*','+','-','=','#','!','^','/', '?', ':', '&', '|'],
+            scoping: ['(',')','[',']','{','}'],
+            linecomment: '//',
+            blockComment: ['/*','*/'],
+            ignore: [',',';'],
+            follow: [
+                (x,i,a) => /*a.slice(0,i).rfind(x => x)*/a[i-1]?.value==='('&&x.group==='identifier'?'identifier_1':void 0
             ]
         }
     };
@@ -32,20 +46,30 @@
             scoping: 'color: #f8ff00',
             string: 'color: #f8ff00',
             identifier_1: 'color: #ff9b60',
-            identiifer_2: 'color: #7fff4a',
+            identifier_2: 'color: #7fff4a',
             number: 'color: #9e86c8',
+            constant: 'color: #9e86c8',
             reserved_1: 'color: #16bfff',
             reserved_2: 'color: #e80a62',
             operator: 'color: #e80a62'
         }
     };
+    const color_theme_short_name_map = {
+        comment: 'a',
+        scoping: 'b',
+        string: 'c',
+        identifier_1: 'd',
+        identifier_2: 'e',
+        number: 'f',
+        constant: 'g',
+        reserved_1: 'h',
+        reserved_2: 'i',
+        operator: 'j',
+        identifier: 'k',
+        ignore: ''
+    };
     
-    function colorise(src, lex) {
-        // reserved_1 reserved_2 comment
-        // operator scoping
-        // string number
-        // identifier_1 identifier_2
-        // identifier ignore
+    function colorise(src, lex, { short } = { short: false }) {
         let index = 0; const tokens = [];
         const currentChar = () => src[index] || '';
         const skipWhitespace = () => { while (currentChar().match(/\s/)) ++index; };
@@ -59,10 +83,13 @@
             skipWhitespace(); if (index >= src.length) break;
             for (let i of lex.reserved_words_1) if (matchWord(i)) { retWord(i,'reserved_1'); continue inf }
             for (let i of lex.reserved_words_2) if (matchWord(i)) { retWord(i,'reserved_2'); continue inf }
+            for (let i of lex.constant) if (matchWord(i)) { retWord(i,'constant'); continue inf }
             
-            if (currentChar().match(/[0-9]/)) { tokens.push({group: 'number', index, value: getChars(/[0-9]/) }); continue }
+            if (currentChar().match(/[.0-9]/)) { tokens.push({group: 'number', index, value: getChars(/[.0-9]/) }); continue }
             if (currentChar().match(/[$_a-zA-Z]/)) { tokens.push({ group: 'identifier', index, value: getChars(/[$_0-9A-Za-z]/) }); continue }
-            if (currentChar() === '"') { const out = { group: 'string', index: index++, value: `"${getChars(/[^"]/)}"` }; index++; tokens.push(out); continue }
+            if (currentChar() === '"') { const out = { group: 'string', index: index++, value: `"${src.slice(index).match(/^([^"\\]|\\"|\\[^"])*"/)[0]}` }; index += out.value.length; tokens.push(out); continue }
+            if (currentChar() === '\'') { const out = { group: 'string', index: index++, value: `'${src.slice(index).match(/^([^'\\]|\\'|\\[^'])*'/)[0]}` }; index += out.value.length; tokens.push(out); continue }
+            if (currentChar() === '`') { const out = { group: 'string', index: index++, value: `\`${src.slice(index).match(/^([^`\\]|\\`|\\[^"])*`/)[0]}` }; index += out.value.length; tokens.push(out); continue }
             if (currentChar() === '/' && src[index + 1] === '/') { tokens.push({ group: 'comment', index, value: getChars(/[^\n]/) }); continue }
             
             for (let i of lex.operators) if (matchSymbol(i)) { retSymbol(i,'operator'); continue inf }
@@ -72,7 +99,7 @@
         }
         return tokens
             .map((x,i,a) => (x.group = lex.follow.reduce((acc, f) => acc || f(x,i,a), void 0) ?? x.group, x)) // TODO: Follow
-            .map((x,i,a) => src.slice((a[i-1]?.index ?? 0) + (a[i-1]?.value.length ?? 0), x.index) +`${x.group==='ignore'?'':`<span class="mk ${x.group}">`}${src.slice(x.index,x.index+x.value.length)}${x.group==='ignore'?'':'</span>'}`).join('');
+            .map((x,i,a) => src.slice((a[i-1]?.index ?? 0) + (a[i-1]?.value.length ?? 0), x.index) +`${x.group==='ignore'?'':`<span class="mk ${short ? color_theme_short_name_map[x.group] : x.group}">`}${src.slice(x.index,x.index+x.value.length)}${x.group==='ignore'?'':'</span>'}`).join('');
     }
     
     const MIME_TYPES = { "aac": "audio/aac","abw": "application/x-abiword","arc": "application/x-freearc","avif": "image/avif","avi": "video/x-msvideo","azw": "application/vnd.amazon.ebook","bin": "application/octet-stream","bmp": "image/bmp","bz": "application/x-bzip","bz2": "application/x-bzip2","cda": "application/x-cdf","csh": "application/x-csh","css": "text/css","csv": "text/csv","doc": "application/msword","docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document","eot": "application/vnd.ms-fontobject","epub": "application/epub+zip","gz": "application/gzip","gif": "image/gif","htm": "text/html","html": "text/html","ico": "image/vnd.microsoft.icon","ics": "text/calendar","jar": "application/java-archive","jpeg .jpg": "image/jpeg","js": "text/javascript (Specifications: HTML and RFC 9239)","json": "application/json","jsonld": "application/ld+json","mid": "audio/midi audio/x-midi","midi": "audio/midi audio/x-midi","mjs": "text/javascript","mp3": "audio/mpeg","mp4": "video/mp4","mpeg": "video/mpeg","mpkg": "application/vnd.apple.installer+xml","odp": "application/vnd.oasis.opendocument.presentation","ods": "application/vnd.oasis.opendocument.spreadsheet","odt": "application/vnd.oasis.opendocument.text","oga": "audio/ogg","ogv": "video/ogg","ogx": "application/ogg","opus": "audio/opus","otf": "font/otf","png": "image/png","pdf": "application/pdf","php": "application/x-httpd-php","ppt": "application/vnd.ms-powerpoint","pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation","rar": "application/vnd.rar","rtf": "application/rtf","sh": "application/x-sh","svg": "image/svg+xml","tar": "application/x-tar","tif": "image/tiff","tiff": "image/tiff","ts": "video/mp2t","ttf": "font/ttf","txt": "text/plain","vsd": "application/vnd.visio","wav": "audio/wav","weba": "audio/webm","webm": "video/webm","webp": "image/webp","woff": "font/woff","woff2": "font/woff2","xhtml": "application/xhtml+xml","xls": "application/vnd.ms-excel","xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","xml": "application/xml","xul": "application/vnd.mozilla.xul+xml","zip": "application/zip","3gp": "video/3gpp","3g2": "video/3gpp2","7z": "application/x-7z-compressed" };
@@ -106,21 +133,10 @@
                 page.print(JSON.stringify(out));
                 break;
             }
-            case '/cat':
-                page.print(JSON.stringify(app.fs.readFileSync(getPath(page.post.path), { encoding: page.post.encoding })));
-                break;
-            case '/save':
-                app.fs.writeFileSync(getPath(page.post.path), page.post.content);
-                page.print(true);
-                break;
-            case '/new/file':
-                if (!app.fs.existsSync(getPath(page.post.path))) app.fs.writeFileSync(getPath(page.post.path), '');
-                page.print(true);
-                break;
-            case '/new/folder':
-                app.fs.mkdirSync(getPath(page.post.path));
-                page.print(true);
-                break;
+            case '/cat': page.print(JSON.stringify(app.fs.readFileSync(getPath(page.post.path), { encoding: page.post.encoding }))); break;
+            case '/save': app.fs.writeFileSync(getPath(page.post.path), page.post.content); page.print(true); break;
+            case '/new/file': if (!app.fs.existsSync(getPath(page.post.path))) app.fs.writeFileSync(getPath(page.post.path), ''); page.print(true); break;
+            case '/new/folder': app.fs.mkdirSync(getPath(page.post.path)); page.print(true); break;
             case '/delete/file': {
                 const name = page.post.path.split('/').pop().replaceAll('_', '__');
                 const date = Date.now();
@@ -134,19 +150,12 @@
             case '/clearRecycleBin': {
                 const files = app.fs.readdirSync(getPath('.recycle'));
                 files.forEach(file => {
-                    try {
-                        app.fs.rmSync(getPath('.recycle/' + file));
-                        app.fs.rmSync(getPath('.recycle/.metadata/' + file + '.metadata'));
-                    }
-                    catch (e) {}
+                    try { app.fs.rmSync(getPath('.recycle/' + file)); app.fs.rmSync(getPath('.recycle/.metadata/' + file + '.metadata'));
+                    } catch (e) {}
                 });
                 page.print(true);
                 break;
             }
-            case '/delete/folder':
-                app.fs.rmSync(getPath(page.post.path), true);
-                page.print(true);
-                break;
             case '/term': {
                 const { spawn } = await import('child_process');
                 if (!app.data.term) {
@@ -186,14 +195,19 @@
                 const pprefix = 'portfolio/pages/';
                 const pages = Object.assign({}, ...app.fs.readdirSync(getPath(pprefix)).map(x => ({[x]:app.fs.readFileSync(getPath(pprefix+x))})));
                 Object.keys(pages).forEach(key => {
-                    app.fs.writeFileSync(getPath('portfolio/build/'+key), pages[key].replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) =>
-                        ({
-                            'highlight': (lang, content) => `<pre>${colorise(content, lex[lang])}</pre>`,
-                            'theme': (theme) => Object.keys(color_theme[theme]).map(key => `.mk.${key}{${color_theme[theme][key]}}`).join('')
-                        })[func](...args.split(',').map(x=>x.trim()), content)));
-                    page.print(true);
-                    app.fs.writeFileSync(getPath('ab24.xyz/new/'+key.replace('.html','.jhp')), `<\?jhp=='protectfile.jhp'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
+                    const replace = str => str.replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) => {
+                        const funcs = {
+                            'highlight': (content, lang, short = true) => `<pre>${colorise(content, lex[lang], { short })}</pre>`,
+                            'theme': (content, theme, short = true) => Object.keys(color_theme[theme]).map(key => `.mk.${short ? color_theme_short_name_map[key] : key}{${color_theme[theme][key]}}`).join(''),
+                            'snippet': (content, path) => replace(app.fs.readFileSync(getPath('portfolio/snippets/'+path))),
+                            'sitemap': () => `<div id=sitemap>${Object.keys(pages).map(page => `<a href=${page.replace('.html','.jhp')}>${page.substr(0, page.indexOf('.'))}</a>`).join('')}</div>`
+                        };
+                        return funcs[func](content, ...args.split(',').filter(x=>x).map(x => JSON.parse(x.trim())));
+                    });
+                    app.fs.writeFileSync(getPath('portfolio/build/'+key), replace(pages[key]));
+                    app.fs.writeFileSync(getPath('ab24.xyz/'+key.replace('.html','.jhp')), `<\?jhp=='protectfile.jhp'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
                 });
+                page.print(true);
                 break;
             }
             
@@ -287,17 +301,9 @@
                     }
                     #modalcontent li { padding: 5px 10px; }
                     #modalcontent li:hover { background: gainsboro; }
-                    
-                    .black { color: black; }
-                    .red { color: red; }
-                    .orange { color: orange; }
-                    .gainsboro { color: gainsboro; }
+                    .black { color: black; } .red { color: red; } .orange { color: orange; } .gainsboro { color: gainsboro; }
                 </style>
-                <div id=headers class="entry">
-                    <span>Name</span>
-                    <span>Last modified</span>
-                    <span>File size</span>
-                </div>
+                <div id=headers class="entry"><span>Name</span><span>Last modified</span><span>File size</span></div>
                 <div j-repeat="x in $.files" class="entry {{x.type==='directory'?'directory':'file'}}" j-click="$.handle(x)" j-rclick="$.context(event, x); return true">
                     <span><i class="fa {{$.icon(x)}}"></i> {{x.name}}</span>
                     <span>{{x.mtime?new Date(x.mtime).toLocaleDateString():'-'}}</span>
@@ -308,7 +314,7 @@
                         <li j-click="$.upload()">File upload</li>
                         <li j-click="$.newFile()">New File</li>
                         <li j-click="$.newFolder()">New Folder</li>
-                        <li j-click="$.delete()">Delete file</li>
+                        <li j-click="$.delete()">Delete</li>
                     </ul>
                 </div>
             <?jhp break;
@@ -454,10 +460,7 @@
                         this.scope.size = (bytes) => {
                             const suff = ['bytes', 'KB','MB','GB','TB'];
                             let index = 0;
-                            while (bytes > 1024) {
-                                bytes /= 1024;
-                                ++index;
-                            }
+                            while (bytes > 1024) { bytes /= 1024; ++index; }
                             return `${parseFloat(bytes.toFixed(2))} ${suff[index]}`;
                         };
                         
