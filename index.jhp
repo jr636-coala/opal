@@ -7,7 +7,7 @@
         <?jhp
         return;
     }
-
+    
     function getPath(path) { return '../../../www/' + path; }
 
     const lex = {
@@ -70,6 +70,7 @@
     };
     
     function colorise(src, lex, { short } = { short: false }) {
+        if (!lex) return src;
         let index = 0; const tokens = [];
         const currentChar = () => src[index] || '';
         const skipWhitespace = () => { while (currentChar().match(/\s/)) ++index; };
@@ -194,8 +195,37 @@
             case '/deployPortfolio': {
                 const pprefix = 'portfolio/pages/';
                 const pages = Object.assign({}, ...(await app.fs.readdirSync(getPath(pprefix), {recursive:true})).map(x => x instanceof Array ? x[1].map(y => x[0]+'/'+y) : [x]).flat().map(x => ({[x]:app.fs.readFileSync(getPath(pprefix+x))})));
+                const split = (str, key, f) => {
+                    const starts = [];
+                    const ends = [];
+                    const matches = [];
+                    const startreg = /<##(.*?)\((.*?)\)##>/g;
+                    const startre = /<##(.*?)\((.*?)\)##>/;
+                    const endreg = /<\/##>/g;
+                    const endlen = 5;
+                    let match;
+                    while ((match = startreg.exec(str)) != null) starts.push(match.index);
+                    while ((match = endreg.exec(str)) != null) ends.push(match.index + endlen);
+                    for (let i = ends.length; i--;) {
+                        const start = starts.pop();
+                        const end = ends[i];
+                        const endPrev = ends[i - 1];
+                        if (start < end && start >= endPrev || endPrev === undefined) {
+                            matches.push([start, ends.pop()]);
+                        }
+                        else ends.splice(-2, 1);
+                    }
+                    return matches.reverse().concat([[str.length,str.length]]).map(([start, end]) => {
+                        const x = str.substring(start,end);
+                        const m = x.match(startre);
+                        if (!m) return [start,end,''];
+                        const [match,func,args] = m;
+                        const content = x.slice(match.length, - endlen);
+                        return [start, end, f(match, func, args, content)];
+                    }).reduce(([ae,ac], [xs,xe,xc]) => [xe,ac+str.substring(ae,xs)+xc], [0,''])[1];
+                }
                 Object.keys(pages).forEach(key => {
-                    const replace = (str = '', params = []) => str.replace(/<##(.*?)\((.*?)\)##>(.*?)<\/##>/sg, (match, func, args, content) => {
+                    const replace = (str = '', params = []) => split(str, key, (match, func, args, content) => {
                         const funcs = {
                             'highlight': (content, lang, short = true) => `<pre>${colorise(content, lex[lang], { short })}</pre>`,
                             'theme': (content, theme, short = true) => Object.keys(color_theme[theme]).map(key => `.mk.${short ? color_theme_short_name_map[key] : key}{${color_theme[theme][key]}}`).join(''),
