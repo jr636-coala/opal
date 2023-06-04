@@ -13,7 +13,7 @@
     const lex = {
         cpp: {
             reserved_words_1: ['struct', 'bool', 'int', 'char', 'auto', 'double'],
-            reserved_words_2: ['return','if','const'],
+            reserved_words_2: ['return','if','const','else'],
             constant: [],
             operators: ['>', '<', '*','+','-','=','#','!','^','/', '?', ':', '&', '|'],
             scoping: ['(',')','[',']','{','}'],
@@ -36,6 +36,19 @@
             ignore: [',',';'],
             follow: [
                 (x,i,a) => /*a.slice(0,i).rfind(x => x)*/a[i-1]?.value==='('&&x.group==='identifier'?'identifier_1':void 0
+            ]
+        },
+        mrd: {
+            reserved_words_1: ['%%','|||'],
+            reserved_words_2: ['do','if','while','else'],
+            constant: [],
+            operators: ['>', '<', '*','+','-','=','#','!','^','/', '?', ':', '&', '|'],
+            scoping: ['(',')','[',']','{','}'],
+            linecomment: '//',
+            blockComment: ['/*','*/'],
+            ignore: [',',';'],
+            follow: [
+                (x,i,a) => x.group==='identifier'?x.value[0]==='r'?'identifier_1':'identifier_2':void 0
             ]
         }
     };
@@ -227,17 +240,17 @@
                 Object.keys(pages).forEach(key => {
                     const replace = (str = '', params = []) => split(str, key, (match, func, args, content) => {
                         const funcs = {
+                            'lastmodified': () => new Date(app.fs.statSync(getPath(`portfolio/pages/${key}`)).mtime).toGMTString(),
                             'highlight': (content, lang, short = true) => `<pre>${colorise(content, lex[lang], { short })}</pre>`,
                             'theme': (content, theme, short = true) => Object.keys(color_theme[theme]).map(key => `.mk.${short ? color_theme_short_name_map[key] : key}{${color_theme[theme][key]}}`).join(''),
                             'snippet': (content, path, ...params) => replace(app.fs.readFileSync(getPath('portfolio/snippets/'+path)), [content].concat(params)),
-                            'sitemap': () => `<div id=sitemap>${Object.keys(pages).filter(x => !x.startsWith('blog/')).map(page => `<a target=_self href=/${page.replace('.html','.jhp')}>${page.substr(0, page.indexOf('.'))}</a>`).join('')}</div>`,
-                            'posts': () => `<div id=posts>${Object.keys(pages).filter(x => x.startsWith('blog/')).map(x => (([,_,content,[,title,date]=_.split(',').map(x=>JSON.parse(x))]) => `<i>${date}</i> - <a target=_self href=/${x.replace('.html','.jhp')}>${title}</a>: ${content.substr(0, 40)+(content.length<=40?'':'...')}`)(pages[x].match(/<##snippet\((.*?)\)##>(.*?)<\/##>/s))).join('')}`
+                            'sitemap': () => `<div id=sitemap>${Object.keys(pages).filter(x => !x.startsWith('blog/')).map(page => `<a target=_self href=/${page}>${page.substr(0, page.indexOf('.'))}</a>`).join('')}</div>`,
+                            'posts': () => `<div id=posts>${Object.keys(pages).filter(x => x.startsWith('blog/') && !x.endsWith('.jhp')).map(x => (([,_,content,[,title,date]=_.split(',').map(x=>JSON.parse(x))]) => `<div><i>${date}</i> - <a target=_self href=/${x}>${title}</a></div>`)(pages[x].match(/<##snippet\((.*?)\)##>(.*?)<\/##>/s))).join('')}`
                         };
                         if (!isNaN(func)) return replace(params[func]);
                         return funcs[func](content, ...args.split(',').filter(x=>x).map(x => JSON.parse(x)));
                     });
-                    app.fs.writeFileSync(getPath('portfolio/build/'+key), replace(pages[key]));
-                    app.fs.writeFileSync(getPath('ab24.xyz/'+key.replace('.html','.jhp')), `<\?jhp=='${getPath('ab24.xyz/protectfile.jhp')}'?\><\?jhp=='${getPath('portfolio/build/'+key)}'?\>`);
+                    app.fs.writeFileSync(getPath(`ab24.xyz/${key}`), replace(pages[key]));
                 });
                 page.print(true);
                 break;
@@ -276,7 +289,7 @@
                     <div id=panels>
                     </div>
                 </div>
-                <div id=bottombar>
+                <div id=bottombar></div>
             <?jhp break;
             case '/template/panel': ?>
                 <style>
@@ -326,7 +339,8 @@
                 <style>
                     #editor{width:100%;height:100%}
                     #alert{position:absolute; bottom: 0; left: 50%; transform: translate(-50%); background: darkgrey; color: white;display:none;padding: 20px;border-radius: 3px}
-                    #info{position:absolute; bottom: 7px; right: 7px;text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;color:white}
+                    #info{position:absolute; bottom: 7px; right: 2em;text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;color:white}
+                    .ace_editor { font: 12px/normal monospace; }
                 </style>
                 <div id=editor></div>
                 <div id=alert></div>
@@ -380,8 +394,8 @@
         <script>
             // Util
             const post=(path,data={})=>fetch(`?method=${path}`, { method: 'POST', body: JSON.stringify(data) }).then(r=>r.json());
-            const elementBuilder=(type,s=false)=>{const e=document.createElement(type),t=()=>{},h={get:(t, p)=>p==='build'?()=>e:new Proxy((t.p.push(p),t),h),apply:(t,_,a)=>{`${t.p}`==='style'?s=!s:s?elem.style[target
-            .path[0]]=args[0]:(()=>{let o=e;while(t.p.length>1)o=o?.[t.p.shift()];o[t.p[0]]instanceof Function?o[t.p[0]](...a):o[t.p[0]]=a[0]})();return new Proxy((t.p=[],t),h)}};return new Proxy((t.p=[],t),h)};
+            const elementBuilder=(type,s=false)=>{const e=document.createElement(type),t=()=>{},h={get:(t, p)=>p==='build'?()=>e:new Proxy((t.p.push(p),t),h),apply:(t,_,a)=>{`${t.p}`==='style'?s=!s:s?e.style[t
+            .p[0]]=a[0]:(()=>{let o=e;while(t.p.length>1)o=o?.[t.p.shift()];o[t.p[0]]instanceof Function?o[t.p[0]](...a):o[t.p[0]]=a[0]})();return new Proxy((t.p=[],t),h)}};return new Proxy((t.p=[],t),h)};
             
             // Jang
             jang
@@ -389,7 +403,7 @@
                     constructor(...a) { super(...a, { template: '?method=/template/index' }); }
                     init() {
                         jang.rootscope.panels = this.$('#panels');
-                        this.scope.open = (name, args) => this.$('#panels').append(elementBuilder('jang-panel').component.type(name, args).build());
+                        jang.rootscope.open = this.scope.open = (name, args, _) => (this.$('#panels').append(_ = elementBuilder('jang-panel').component.type(name, args).build()), _.child);
                         setTimeout(() => this.scope.open('filelist', { path: location.hash.substr(1) }));
                         this.scope.restartSerman = () => {
                             const _ = confirm("Restart serman?");
@@ -418,7 +432,7 @@
                             while(options.nextSibling) options.nextSibling.remove();
                             options.after(elem);
                             this.scope.options = (elem.component.options ?? []).map(x => ({ ...x, func: () => x.func(this.$('#menu').checked=false) }));
-                            return elem.component;
+                            return this.element.child = elem.component;
                         };
                         switch (type) {
                             case 'filelist': create('jang-filelistpanel').path = args.path; break;
@@ -553,9 +567,14 @@
                     #file;
                     constructor(...a) {
                         super(...a, { template: '?method=/template/texteditor-panel' });
+                        this.preview;
                         this.options = [
                             { text: 'Save', func: () => this.save() },
-                            { text: 'Set title', func: () => document.title = `Opal: ${this.#file.path.split('/').pop()}` }
+                            { text: 'Set title', func: () => document.title = `Opal: ${this.#file.path.split('/').pop()}` },
+                            { text: 'Preview', func: () => {
+                                if (!this.preview) this.preview = jang.rootscope.open('url', this.#file.path.match(/(?<=\/www).*/));
+                                this.preview.reload();
+                            } }
                         ];
                     }
                     
@@ -563,6 +582,7 @@
                         post('/save', { path: this.#file.path, content: this.editor.getValue() }).then(x => {
                             this.$('#alert').innerText = 'Saved';
                             this.$('#alert').style.display = 'block';
+                            this.preview.reload();
                             setTimeout(()=>this.$('#alert').style.display = 'none', 1500);
                         });
                     }
@@ -602,7 +622,11 @@
                     }
                 })
                 .component(class IFramePanel extends jang.classes.JangComponent {
-                    constructor(...a) { super(...a, { html: '<style>:host{width:100%;height:100%;display:flex}iframe{border:0;flex-grow:1}</style><iframe src={{$.url}}></iframe>' }); }
+                    constructor(...a) { super(...a, { html: '<style>:host{width:100%;height:100%;display:flex}iframe{border:0;flex-grow:1}</style><iframe src={{$.url}}></iframe>' });
+                    this.options = [
+                        { text: 'Reload', func: () => this.reload() },
+                        { text: 'Open in tab', func: () => open(this.scope.url) }
+                    ]; }
                     file(file) {
                         switch (file.mime) {
                             case 'application/pdf': this.scope.url = 'data:application/pdf;base64,JVBERi0xLjAKMSAwIG9iajw8L1BhZ2VzIDIgMCBSPj5lbmRvYmogMiAwIG9iajw8L0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iaiAzIDAgb2JqPDwvTWVkaWFCb3hbMCAwIDMgM10+PmVuZG9iagp0cmFpbGVyPDwvUm9vdCAxIDAgUj4+';
@@ -618,6 +642,7 @@
                         this.scope.url = url;
                         this.$apply();
                     }
+                    reload() { this.url(this.scope.url); }
                 })
                 .component(class TerminalPanel extends jang.classes.JangComponent {
                     constructor(...a) { super(...a, { template: '?method=/template/terminal-panel' }); this.scope.lines = []; }
