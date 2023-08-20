@@ -164,7 +164,7 @@
             case '/clearRecycleBin': {
                 const files = app.fs.readdirSync(getPath('.recycle'));
                 files.forEach(file => {
-                    try { app.fs.rmSync(getPath('.recycle/' + file)); app.fs.rmSync(getPath('.recycle/.metadata/' + file + '.metadata'));
+                    try { app.fs.rmSync(getPath('.recycle/' + file), true); app.fs.rmSync(getPath('.recycle/.metadata/' + file + '.metadata'));
                     } catch (e) {}
                 });
                 page.print(true);
@@ -262,7 +262,7 @@
                     :host { --foldertree-width: 0/*0.25fr*/ }
                     #topbar { background: gainsboro; padding: 2px }
                     #main { background: green; display: grid; grid-template-columns: var(--foldertree-width) 1fr; overflow: auto; flex-grow: 1 }
-                    #bottombar { background: gainsboro; height: 1em }
+                    #bottombar { background: gainsboro; height: 1em; position: relative }
                     
                     #foldertree { background: aqua }
                     #panels { background: white; display: flex; overflow: auto }
@@ -276,12 +276,14 @@
                     #topbar ul ul { left: 100%; position: absolute; top: 0 }
                     #topbar li:hover { background-color: #000 }
                     #topbar li:hover>ul { display: block; z-index: 999 }
+                    
+                    #musicmodal { display: none; position: absolute; right: 1em; bottom: 1em }
                 </style>
                 <ul id=topbar>
                     <li><span j-click="$.open('terminal')">Terminal</span></li>
                     <li><span j-click="$.open('filelist', { path: '' })">File explorer</span></li>
                     <li><span j-click="$.open('url', 'https://node.ab24.xyz/serman')">Serman</span></li>
-                    <li><span>Tools</span><ul><li j-click="$.restartSerman()">Restart SerMan</li><li j-click="$.deployPortfolio()">Deploy portfolio</li></ul></li>
+                    <li><span>Tools</span><ul><li j-click=$.restartSerman()>Restart SerMan</li><li j-click=$.deployPortfolio()>Deploy portfolio</li><li j-click=$.deployYNWA()>Deploy YNWA</li></ul></li>
                 </ul>
                 <div id=main>
                     <div id=foldertree>
@@ -289,7 +291,37 @@
                     <div id=panels>
                     </div>
                 </div>
-                <div id=bottombar></div>
+                <div id=bottombar>
+                    <span class="fa fa-music" style=float:right;margin-right:1em onclick=this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'':'block'></span>
+                    <div id=musicmodal><jang-musiccomponent></div>
+                </div>
+            <?jhp break;
+            case '/template/music': ?>
+                <style>
+                    #player_controls button { font-size: 5em; background: 0; border: 0; }
+                    #progress { width: 100%; height: 2em; }
+                    :host { display:block; padding:5px; width:300px; background: #333; color: white; border-radius: 5px }
+                    ul { list-style: none; padding: 0 1em; overflow: auto; }
+                    li { border: 1px solid #222; padding: 2px; margin: 2px }
+                    i { font-size: 2em; }
+                    #songList { background: #333; display:none; width:300px; height:max(25vh, 400px); position: absolute; right: 100%; top: calc(-100% - 5px); }
+                    
+                </style>
+                <span style=position:relative>
+                <i class="fas fa-chevron-left" onclick=this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'':'block'></i>
+                <div id=songList>
+                    <ul>
+                        <li j-repeat="song in $.songs" j-click=$.switchSong($index,song)>
+                            > {{song.title||'unknown'}}<br>
+                            > {{song.artist||'unknown'}}<br>
+                            > {{song.album||'unknown'}}
+                        </li>
+                    </ul>
+                </div>
+                </span>
+                <i j-click=$.upload() class="fa fa-file-audio"></i> <i j-click=$.add() class="fa fa-font"></i> <i j-click=$.export() class="fa fa-download"></i> <i j-click=$.import() class="fa fa-upload"></i>
+                <input type=file id=upload style=display:none>
+                <j-player style=width:300px;font-size:.75em;border-radius:10px></j-player>
             <?jhp break;
             case '/template/panel': ?>
                 <style>
@@ -387,6 +419,9 @@
         <script src=//dev.ab24.xyz/j/jang.js></script>
         <script src=//cdn.ab24.xyz/ace/ace.js></script>
         <script src=//cdn.ab24.xyz/ace/ext-modelist.js></script>
+        <script src=//dev.ab24.xyz/stupifier/stupifier.js></script>
+        <script src=//dev.ab24.xyz/c-elem/celem/player.js></script>
+        <script type=module>import{DB}from'//dev.ab24.xyz/file_dump/db.js';window.DB=DB;</script>
         <link rel="stylesheet" href="//cdn.ab24.xyz/font_awesome/css/all.min.css">
         <style>html,body{margin:0;padding:0}jang-route{display:block;width:100vw;height:100vh}</style>
     </head>
@@ -397,11 +432,13 @@
             const post=(path,data={})=>fetch(`?method=${path}`, { method: 'POST', body: JSON.stringify(data) }).then(r=>r.json());
             const elementBuilder=(type,s=false)=>{const e=document.createElement(type),t=()=>{},h={get:(t, p)=>p==='build'?()=>e:new Proxy((t.p.push(p),t),h),apply:(t,_,a)=>{`${t.p}`==='style'?s=!s:s?e.style[t
             .p[0]]=a[0]:(()=>{let o=e;while(t.p.length>1)o=o?.[t.p.shift()];o[t.p[0]]instanceof Function?o[t.p[0]](...a):o[t.p[0]]=a[0]})();return new Proxy((t.p=[],t),h)}};return new Proxy((t.p=[],t),h)};
+            const post2=(url,data,h='application/json')=>fetch(url,{headers:{'Accept':h,'Content-Type':h},method:`post`,body:JSON.stringify(data)}).then(r=>r.json());
+            const path = path => '../../' + path;
             
             // Jang
             jang
                 .component(class Index extends jang.classes.JangComponent {
-                    constructor(...a) { super(...a, { template: '?method=/template/index' }); }
+                    constructor(...a) { super(...a, { template: '?method=/template/index', style: 'inherit' }); }
                     init() {
                         jang.rootscope.panels = this.$('#panels');
                         jang.rootscope.open = this.scope.open = (name, args, _) => (this.$('#panels').append(_ = elementBuilder('jang-panel').component.type(name, args).build()), _.child);
@@ -412,6 +449,36 @@
                         };
                         this.scope.deployPortfolio = () => {
                             post('/deployPortfolio');
+                        };
+                        this.scope.deployYNWA = async () => {
+                            const start = performance.now();
+                            const paths = await post2('../tools/tree.jhp', {
+                                path: path('dev.ab24.xyz/rey/static'),
+                                ignore: [
+                                    path('dev.ab24.xyz/rey/static/res'),
+                                    path('dev.ab24.xyz/rey/static/php'),
+                                    path('dev.ab24.xyz/rey/static/json'),
+                                    path('dev.ab24.xyz/rey/static/jhp/admin'),
+                                    path('dev.ab24.xyz/rey/static/njs')
+                                ]
+                            });
+                            const files = await Promise.all(paths.map(async (_path) => {
+                                
+                                const toHTTP = (_path) => _path.replace(path(''), 'https://');
+                                
+                                if (_path.match(/\.html$/)) {
+                                    return { src: _path, data: await stupifier.html({url:toHTTP(_path)}) };
+                                }
+                                else if (_path.match(/\.css/)) {
+                                    return { src: _path, data: await stupifier.css({url:toHTTP(_path)}) };
+                                }
+                                return { src: _path };
+                            }));
+                            const newFiles = files.map(x => ({ ...x, dest: x.src.replace(path('dev.ab24.xyz/rey'), path('ynwa.ab24.xyz')) }));
+                            
+                            await post2('../tools/deploy.jhp', newFiles);
+                            console.log(`Deployment took ${performance.now() - start}ms`);
+                            console.log(newFiles);
                         };
                     }
                 })
@@ -717,6 +784,90 @@
                         this.scope.prompt = this.input.title = prompt;
                         this.input.innerText = this.$('#suggest').innerText = this.str = '';
                         this.$apply();
+                    }
+                })
+                .component(class MusicComponent extends jang.classes.JangComponent {
+                    constructor(...a) {
+                        super(...a, {
+                            template: '?method=/template/music',
+                            style: 'inherit'
+                        });
+                        this.scope.songs = [];
+                    }
+                    async init() {
+                        await new Promise(res => {
+                            const it = () => {
+                                if (window.DB) res()
+                                else setTimeout(it, 50);
+                            }
+                            it();
+                        })
+                        this.db = await DB('player', 1, db => db.createObjectStore('songs', { keyPath: '_id' }));
+                        this.audio = this.$('j-player');
+                        this.scope.switchSong = async (index, song) => {
+                            await this.audio.setSong(song);
+                            this.audio.play();
+                            const soff = off => (i=(index+off+this.scope.songs.length)%this.scope.songs.length) => this.scope.switchSong(i, this.scope.songs[i]);
+                            this.audio.onprev = soff(-1);
+                            this.audio.onnext = soff(1);
+                        };
+                        const addSong = (song, update) => {
+                            if (!update) song._id = ++this._id;
+                            this.scope.songs.push(song);
+                            this.$apply();
+                            return this.db.update('songs', song);
+                        }
+                        this.scope.songs.push(...await this.db.all('songs'));
+                        this.$apply();
+                        this._id = (Math.max(...this.scope.songs.map(({_id}) => _id)) | 0) || -1;
+                        this.scope.upload = _ => {
+                            this.$('#upload').oninput = async e => {
+                                const { files } = e.target;
+                                
+                                for (const file of files) await addSong(await this.audio.loadSongFromFile(file));
+                                this.$apply();
+                            };
+                            this.$('#upload').click();
+                        };
+                        this.scope.add = _ => {
+                            const title = prompt('Title');
+                            const artist = prompt('Artist') || void 0;
+                            const album = prompt('Album') || void 0;
+                            const img = prompt('img') || void 0;
+                            const url = prompt('URL');
+                            if (!title || !url) return;
+                            return addSong({ url, title, artist, album, img });
+                        };
+                        this.scope.export = _ => {
+                            const conf = confirm('Export songs?');
+                            if (conf) {
+                                const elem = document.createElement('a');
+                                elem.href= `data:application/json,${JSON.stringify(this.scope.songs)}`;
+                                elem.download = 'songs.json';
+                                elem.click();
+                            }
+                        }
+                        this.scope.import = _ => {
+                            const conf = confirm('Import songs?');
+                            if (conf) {
+                                const elem = document.createElement('input');
+                                elem.type = 'file';
+                                elem.oninput = async e => {
+                                    const fr = new FileReader();
+                                    fr.onload = async e => {
+                                        let { result } = e.target;
+                                        result = JSON.parse(result);
+                                        this.scope.songs = [];
+                                        for (const song of result) {
+                                            await addSong(song, true);
+                                        }
+                                        console.log(result);
+                                    }
+                                    fr.readAsText(e.target.files[0]);
+                                }
+                                elem.click();
+                            }
+                        }
                     }
                 })
                 .rootscope(class {
